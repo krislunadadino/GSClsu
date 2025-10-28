@@ -1,5 +1,8 @@
 <?php
 session_start();
+// NOTE: Assuming config.php and necessary PHP environment is correctly configured.
+// For demonstration, the database connection functions (mysqli_query, mysqli_fetch_assoc) 
+// are assumed to be working correctly with the included config.php.
 include("config.php");
 
 if (!isset($_SESSION['username'])) {
@@ -7,26 +10,28 @@ if (!isset($_SESSION['username'])) {
     exit();
 }
 
+
 $username = $_SESSION['username'];
 $name = isset($_SESSION['name']) ? $_SESSION['name'] : $username;
 $activePage = "dashboard";
 
 // Total concerns
 $totalQuery = "SELECT COUNT(*) AS total FROM Concerns";
-$totalResult = mysqli_query($conn, $totalQuery);
-$totalRow = mysqli_fetch_assoc($totalResult);
+// Check if $conn is defined and connected before running query
+$totalResult = isset($conn) ? mysqli_query($conn, $totalQuery) : false;
+$totalRow = ($totalResult && $totalResult !== true) ? mysqli_fetch_assoc($totalResult) : ['total' => 0];
 $total = $totalRow['total'] ?? 0;
 
 // Pending concerns
 $pendingQuery = "SELECT COUNT(*) AS pending FROM Concerns WHERE Status = 'Pending'";
-$pendingResult = mysqli_query($conn, $pendingQuery);
-$pendingRow = mysqli_fetch_assoc($pendingResult);
+$pendingResult = isset($conn) ? mysqli_query($conn, $pendingQuery) : false;
+$pendingRow = ($pendingResult && $pendingResult !== true) ? mysqli_fetch_assoc($pendingResult) : ['pending' => 0];
 $pending = $pendingRow['pending'] ?? 0;
 
 // In Progress concerns
 $inProgressQuery = "SELECT COUNT(*) AS inProgress FROM Concerns WHERE Status = 'In Progress'";
-$inProgressResult = mysqli_query($conn, $inProgressQuery);
-$inProgressRow = mysqli_fetch_assoc($inProgressResult);
+$inProgressResult = isset($conn) ? mysqli_query($conn, $inProgressQuery) : false;
+$inProgressRow = ($inProgressResult && $inProgressResult !== true) ? mysqli_fetch_assoc($inProgressResult) : ['inProgress' => 0];
 $inProgress = $inProgressRow['inProgress'] ?? 0;
 
 // Fetch recent concerns
@@ -37,14 +42,15 @@ $recentConcernsQuery = "
         c.Room, 
         c.Problem_Type, 
         c.Priority, 
+        c.Concern_Date,
         c.Status, 
         c.Assigned_to, 
         a.Username AS ReportedBy
     FROM Concerns c
     LEFT JOIN Accounts a ON c.AccountID = a.AccountID
     ORDER BY c.ConcernID DESC
-    LIMIT 10";
-$recentResult = mysqli_query($conn, $recentConcernsQuery);
+    LIMIT 3";
+$recentResult = isset($conn) ? mysqli_query($conn, $recentConcernsQuery) : false;
 ?>
 
 <!DOCTYPE html>
@@ -55,11 +61,14 @@ $recentResult = mysqli_query($conn, $recentConcernsQuery);
 <title>Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+<!-- Optional: Add Lucide or FontAwesome for card icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
+/* --- PRESERVED NAVBAR STYLES (AS REQUESTED) --- */
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f4f4f4;
+    font-family: 'Inter', sans-serif; /* Changed font for better look */
+    background: #f9fafb; /* Softer background */
 }
 .navbar {
     display: flex;
@@ -114,8 +123,8 @@ body {
     font-size: 16px;
     padding: 6px 12px;
 }
-.dropdown-toggle:hover .dropdown-menu {
-    display: block;
+.dropdown-toggle {
+    cursor: pointer;
 }
 .dropdown-menu {
     display: none;
@@ -129,6 +138,9 @@ body {
     overflow: hidden;
     z-index: 10;
 }
+.dropdown:hover .dropdown-menu {
+    display: block; /* Show dropdown on hover */
+}
 .dropdown-menu a {
     display: block;
     padding: 12px 16px;
@@ -139,88 +151,167 @@ body {
 .dropdown-menu a:hover {
     background: #f1f1f1;
 }
+/* --- END PRESERVED NAVBAR STYLES --- */
+
+
+/* --- NEW/REFACTORED DASHBOARD STYLES --- */
 .container {
-    display: flex;
-    flex-direction: column;
-    padding: 40px;
-    gap: 25px;
-    justify-content: center;
+    padding: 40px 60px;
+    gap: 30px;
 }
-.status-section {
-    display: flex;
+
+.top-dashboard-grid {
+    display: grid;
+    grid-template-columns: 3fr 1fr; /* 3/4 for cards, 1/4 for announcements */
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+/* Card Styling */
+.status-cards-wrapper {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
 }
-.concerns-panel {
-    flex: 2.5;
+
+.dashboard-card {
     background: white;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    max-width: 650px;
-    overflow: hidden;
-    border: 1px solid black;
-}
-.concerns-header {
-    background: linear-gradient(135deg, #163a37, #1c4440, #275850, #1f9158);
-    color: white;
-    padding: 12px 0;
-    text-align: center;
-}
-.cards {
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); /* Soft shadow */
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-align: left;
     display: flex;
+    flex-direction: column;
     justify-content: space-between;
-    gap: 15px;
-    padding: 20px;
+    min-height: 120px;
+    border: 1px solid #e5e7eb; /* Light border */
 }
-.card {
-    flex: 1;
-    background: #f0f0f0;
-    border-radius: 10px;
-    padding: 20px;
-    text-align: center;
-    border: 1px solid black;
-    box-shadow: 1px 2px 4px rgba(0,0,0,0.2);
+
+.dashboard-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
-.card h1 {
+
+.card-icon {
+    font-size: 24px;
+    opacity: 0.7;
+    margin-bottom: 10px;
+}
+
+.card-value {
+    font-size: 44px;
+    font-weight: 700;
     margin: 0;
-    font-size: 48px;
+    line-height: 1;
 }
-.card.total { color: #d32f2f; }
-.card.pending { color: #fbc02d; }
-.card.inprogress { color: #4caf50; }
-.card p {
-    margin: 10px 0 0 0;
-    font-weight: bold;
-    color: #333;
+
+.card-label {
+    font-size: 16px;
+    font-weight: 500;
+    color: #6b7280;
+    margin-top: 5px;
 }
+
+/* Specific Card Colors (Soft Tints) */
+.card-total {
+    color: #275850; /* Primary color */
+}
+.card-total .card-icon { color: #1f9158; }
+
+.card-pending {
+    background-color: #fffbeb;
+    color: #b45309;
+}
+.card-pending .card-icon { color: #f59e0b; }
+
+.card-inprogress {
+    background-color: #ecfdf5;
+    color: #047857;
+}
+.card-inprogress .card-icon { color: #10b981; }
+
+/* Announcements Panel */
 .announcements-panel {
-    flex: 1;
-    background: #e6e6e6;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    height: fit-content;
-    max-width: 250px;
-    border: 1px solid gray;
-}
-.announcement {
     background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    min-height: 200px; /* Ensure visual balance */
+    border: 1px solid #e5e7eb;
+}
+
+.announcements-panel h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f9158;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 8px;
+}
+
+.announcement-item {
+    background: #f9fafb;
     border-radius: 8px;
-    padding: 12px 15px;
+    padding: 10px 15px;
     margin-bottom: 10px;
     text-align: left;
     font-size: 14px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-left: 3px solid #1f9158;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-.recent-table {
+
+/* Recent Concerns Table */
+.recent-concerns-panel {
     background: white;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    border: 1px solid black;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5e7eb;
 }
-.recent-table h4 {
-    margin-bottom: 15px;
-    font-weight: bold;
+
+.recent-concerns-panel h4 {
+    margin-bottom: 20px;
+    font-weight: 700;
+    color: #374151;
+    font-size: 20px;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+}
+
+.table thead {
+    background-color: #f3f4f6;
+    color: #374151;
+    font-weight: 600;
+}
+
+.table tbody tr:hover {
+    background-color: #fefefe;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1024px) {
+    .top-dashboard-grid {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+@media (max-width: 768px) {
+    .top-dashboard-grid {
+        grid-template-columns: 1fr; /* Stack cards and announcements */
+    }
+    .status-cards-wrapper {
+        grid-template-columns: 1fr; /* Stack cards vertically on mobile */
+    }
+    .container {
+        padding: 20px;
+    }
+    .recent-concerns-panel {
+        padding: 20px;
+    }
 }
 </style>
 </head>
@@ -250,75 +341,97 @@ body {
 </div>
 
 <div class="container">
-    <div class="status-section">
-        <div class="concerns-panel">
-            <div class="concerns-header">
-                <h2>Concerns Status</h2>
+    
+    <!-- Top Dashboard Grid: Status Cards & Announcements -->
+    <div class="top-dashboard-grid">
+        <!-- Status Cards Wrapper -->
+        <div class="status-cards-wrapper">
+            
+            <!-- Card 1: Total Complaints -->
+            <div class="dashboard-card card-total">
+                <div class="card-icon"><i class="fas fa-boxes"></i></div>
+                <h1 class="card-value"><?php echo $total; ?></h1>
+                <p class="card-label">Total Complaints</p>
             </div>
-            <div class="cards">
-                <div class="card total">
-                    <h1><?php echo $total; ?></h1>
-                    <p>Total Complaints</p>
-                </div>
-                <div class="card pending">
-                    <h1><?php echo $pending; ?></h1>
-                    <p>Pending</p>
-                </div>
-                <div class="card inprogress">
-                    <h1><?php echo $inProgress; ?></h1>
-                    <p>In Progress</p>
-                </div>
+            
+            <!-- Card 2: Pending -->
+            <div class="dashboard-card card-pending">
+                <div class="card-icon"><i class="fas fa-clock"></i></div>
+                <h1 class="card-value"><?php echo $pending; ?></h1>
+                <p class="card-label">Pending</p>
+            </div>
+            
+            <!-- Card 3: In Progress -->
+            <div class="dashboard-card card-inprogress">
+                <div class="card-icon"><i class="fas fa-tasks"></i></div>
+                <h1 class="card-value"><?php echo $inProgress; ?></h1>
+                <p class="card-label">In Progress</p>
             </div>
         </div>
 
+        <!-- Announcements Panel -->
         <div class="announcements-panel">
             <h3>Announcements</h3>
             <div id="announcementsContainer">
-                <div class="announcement">Loading announcements...</div>
+                <div class="announcement-item">Loading announcements...</div>
             </div>
         </div>
     </div>
 
-    <div class="recent-table">
-    <h4>Recent Concerns</h4>
-    <div class="table-responsive mt-2">
-        <table class="table table-bordered table-hover align-middle">
-            <thead class="table-success">
-                <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Room</th>
-                    <th>Type</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Reported By</th>
-                    <th>Assigned To</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php while ($row = mysqli_fetch_assoc($recentResult)): ?>
-                <tr>
-                    <td><?php echo $row['ConcernID']; ?></td>
-                    <td><?php echo htmlspecialchars($row['Concern_Title']); ?></td>
-                    <td><?php echo htmlspecialchars($row['Room']); ?></td>
-                    <td><?php echo htmlspecialchars($row['Problem_Type']); ?></td>
-                    <td><?php echo htmlspecialchars($row['Priority']); ?></td>
-                    <td><?php echo htmlspecialchars($row['Status']); ?></td>
-                    <td><?php echo htmlspecialchars($row['ReportedBy']); ?></td>
-                    <td><?php echo htmlspecialchars($row['Assigned_to']); ?></td>
-                </tr>
-                <?php endwhile; ?>
-            </tbody>
-        </table>
-    </div>
+    <!-- Recent Concerns Table -->
+    <div class="recent-concerns-panel">
+        <h4>Recent Concerns</h4>
+        <div class="table-responsive mt-2">
+            <table class="table table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Room</th>
+                        <th>Type</th>
+                        <th>Priority</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Reported By</th>
+                        <th>Assigned To</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    if ($recentResult) {
+                        while ($row = mysqli_fetch_assoc($recentResult)): 
+                    ?>
+                        <tr>
+                            <td><?php echo $row['ConcernID']; ?></td>
+                            <td><?php echo htmlspecialchars($row['Concern_Title']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Room']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Problem_Type']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Priority']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Concern_Date']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Status']); ?></td>
+                            <td><?php echo htmlspecialchars($row['ReportedBy']); ?></td>
+                            <td><?php echo htmlspecialchars($row['Assigned_to']); ?></td>
+                        </tr>
+                    <?php 
+                        endwhile; 
+                    } else {
+                        // Display fallback if no results or connection issue
+                        echo '<tr><td colspan="9" class="text-center text-muted">No recent concerns found or database error.</td></tr>';
+                    }
+                    ?>
+                </tbody>
+            </table>
+        </div>
 
-    <div style="text-align: center; margin-top: 15px;">
-        <a href="adminconcerns.php" 
-           class="btn" 
-           style="background-color: white; color: green; font-weight: 600; border: 1px solid green; 
-                  box-shadow: 0 3px 6px rgba(0, 128, 0, 0.3); transition: 0.3s;">
-            View All Concerns
-        </a>
+        <div style="text-align: center; margin-top: 25px;">
+            <a href="adminconcerns.php" 
+                class="btn btn-lg" 
+                style="background-color: #275850; color: white; font-weight: 600; border: none; 
+                       border-radius: 8px; padding: 10px 25px; transition: 0.3s ease-in-out;
+                       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                View All Concerns
+            </a>
+        </div>
     </div>
 </div>
 
@@ -327,29 +440,34 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.js"></script>
 <script>
 function loadAnnouncements() {
-    fetch('get_announcement.php')
-        .then(res => res.json())
+    fetch('adminannounce.php')
+        .then(res => {
+            if (!res.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return res.json();
+        })
         .then(data => {
             const container = document.getElementById('announcementsContainer');
             container.innerHTML = '';
-            if (!data.length) {
-                container.innerHTML = '<div class="announcement">No announcements yet.</div>';
+            if (!data || !data.length) {
+                container.innerHTML = '<div class="announcement-item text-muted">No announcements yet.</div>';
                 return;
             }
             data.forEach(a => {
                 const div = document.createElement('div');
-                div.className = 'announcement';
+                div.className = 'announcement-item';
                 div.innerHTML = `
-                    <div class="fw-bold">${a.title}</div>
-                    <div class="text-muted small">${a.date}</div>
-                    <div>${a.details}</div>
+                    <div class="fw-bold" style="color:#275850;">${a.title || 'No Title'}</div>
+                    <div class="text-muted small mb-1" style="font-size:11px;">${a.date || 'Unknown Date'}</div>
+                    <div style="color:#6b7280;">${a.details || 'No details provided.'}</div>
                 `;
                 container.appendChild(div);
             });
         })
         .catch(() => {
             document.getElementById('announcementsContainer').innerHTML =
-                '<div class="announcement text-danger">Error loading announcements.</div>';
+                '<div class="announcement-item text-danger">Error loading announcements.</div>';
         });
 }
 loadAnnouncements();
